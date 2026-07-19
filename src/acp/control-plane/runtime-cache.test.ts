@@ -17,8 +17,8 @@ function mockState(sessionKey: string): CachedRuntimeState {
     async *runTurn() {
       yield { type: "done" as const };
     },
-    async cancel() {},
-    async close() {},
+    async cancel() { },
+    async close() { },
   } satisfies AcpRuntime;
   return {
     runtime,
@@ -57,5 +57,37 @@ describe("RuntimeCache", () => {
     const byActor = new Map(snapshot.map((entry) => [entry.actorKey, entry]));
     expect(byActor.get("a")?.idleMs).toBe(1_090);
     expect(byActor.get("b")?.idleMs).toBe(1_000);
+  });
+
+  it("evicts least-recently-touched entry when maxCacheSize is reached", () => {
+    const cache = new RuntimeCache({ maxCacheSize: 3 });
+    cache.set("a", mockState("a"), { now: 100 });
+    cache.set("b", mockState("b"), { now: 200 });
+    cache.set("c", mockState("c"), { now: 300 });
+
+    expect(cache.size()).toBe(3);
+
+    // Touch "a" so it is no longer the oldest
+    cache.get("a", { now: 400 });
+
+    // Adding "d" should evict "b" (least-recently-touched)
+    cache.set("d", mockState("d"), { now: 500 });
+    expect(cache.size()).toBe(3);
+    expect(cache.has("a")).toBe(true);
+    expect(cache.has("b")).toBe(false);
+    expect(cache.has("c")).toBe(true);
+    expect(cache.has("d")).toBe(true);
+  });
+
+  it("does not evict when updating an existing key at maxCacheSize", () => {
+    const cache = new RuntimeCache({ maxCacheSize: 2 });
+    cache.set("a", mockState("a"), { now: 100 });
+    cache.set("b", mockState("b"), { now: 200 });
+
+    // Re-setting an existing key does not grow the cache
+    cache.set("a", mockState("a-updated"), { now: 300 });
+    expect(cache.size()).toBe(2);
+    expect(cache.has("a")).toBe(true);
+    expect(cache.has("b")).toBe(true);
   });
 });

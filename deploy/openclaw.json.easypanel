@@ -1,0 +1,81 @@
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  OpenClaw — EasyPanel deployment config (server-mode)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Optimized for autonomous 24/7 operation on an EasyPanel server.
+//  All secrets come from env vars (set in EasyPanel UI), not hardcoded.
+//  NVIDIA free-tier models as primary provider.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  REQUIRED — must be set for the gateway to start
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Gateway auth token. Generate with: openssl rand -hex 32
+// IMPORTANT: Set this in EasyPanel's "Environment Variables" UI, NOT here.
+// The gateway refuses to start if this is empty or an example placeholder.
+OPENCLAW_GATEWAY_TOKEN=
+
+// NVIDIA API key for the free-tier model catalog (DeepSeek, Llama, MiniMax, etc.)
+// Get yours at: https://build.nvidia.com/
+// IMPORTANT: Set this in EasyPanel's "Environment Variables" UI.
+NVIDIA_API_KEY=
+
+// Telegram bot token for the Telegram channel integration
+// IMPORTANT: Set this in EasyPanel's "Environment Variables" UI.
+TELEGRAM_BOT_TOKEN=
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  GATEWAY — network binding, ports, service discovery
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Bind to 0.0.0.0 so the gateway is reachable from outside the container.
+// Required for Docker bridge networking (-p 18789:18789).
+OPENCLAW_GATEWAY_BIND=lan
+
+// Gateway HTTP port (must match the container port mapping in EasyPanel).
+OPENCLAW_GATEWAY_PORT=18789
+
+// Disable Bonjour/mDNS in container environments (no mDNS resolution needed).
+OPENCLAW_DISABLE_BONJOUR=1
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  PATHS — pin container-side directories (explicit overrides)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  These match the defaults (node user home is /home/node) but pin them
+//  explicitly to prevent host-path leakage when EasyPanel forwards env vars.
+
+HOME=/home/node
+OPENCLAW_HOME=/home/node
+OPENCLAW_STATE_DIR=/home/node/.openclaw
+OPENCLAW_CONFIG_PATH=/home/node/.openclaw/openclaw.json
+OPENCLAW_CONFIG_DIR=/home/node/.openclaw
+OPENCLAW_WORKSPACE_DIR=/home/node/.openclaw/workspace
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  RUNTIME — environment, timezone, production mode, resource limits
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// V8 heap limit prevents unbounded memory growth on constrained VPS hosts.
+// 768m leaves room for OS overhead on a 1GB VPS; increase to 1536m on 2GB+.
+NODE_OPTIONS=--max-old-space-size=768
+
+OPENCLAW_TZ=UTC
+NODE_ENV=production
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  BUILD ARGS (Dockerfile section) — used at build time, not runtime
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+OPENCLAW_EXTENSIONS=nvidia
+
+// Chromium adds ~300MB to image + heavy CPU/memory when active.
+// Default off for constrained VPS; set OPENCLAW_INSTALL_BROWSER=1 to enable.
+OPENCLAW_INSTALL_BROWSER=
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  VOLUMES — persistent data mounted from EasyPanel storage
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+openclaw-data       → /home/node/.openclaw
+openclaw-workspace  → /home/node/.openclaw/workspace
+openclaw-config     → /home/node/.config/openclaw

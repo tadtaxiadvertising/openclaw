@@ -1,0 +1,91 @@
+# OpenClaw — EasyPanel deployment configuration
+#
+# This is a streamlined docker-compose for running OpenClaw as an autonomous
+# gateway on an EasyPanel-managed server. It drops the CLI service (not needed
+# for headless server operation) and uses named volumes for persistent data.
+#
+# Usage in EasyPanel:
+#   1. Create a new App → Source: Git repo → URL: git@github.com:tadtaxiadvertising/openclaw.git
+#   2. Build path: / (root) — EasyPanel will use the Dockerfile
+#   3. Set environment variables from .env.easypanel template
+#   4. Port mapping: 18789 → EasyPanel auto-assigns or map to a domain
+#   5. Persistent volumes: openclaw-data, openclaw-config, openclaw-workspace
+#
+# To build with specific extensions:
+#   docker build --build-arg OPENCLAW_EXTENSIONS="matrix,telegram" .
+
+services:
+  openclaw-gateway:
+    image: openclaw:easypanel
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Include nvidia extension for free-tier model support
+        # Add telegram/discord/etc. as needed for channel bots
+        OPENCLAW_EXTENSIONS: "${OPENCLAW_EXTENSIONS:-nvidia}"
+        # Chromium adds ~300MB to image + heavy CPU/memory when active.
+        # Default off for constrained VPS; set OPENCLAW_INSTALL_BROWSER=1 to enable.
+        OPENCLAW_INSTALL_BROWSER: "${OPENCLAW_INSTALL_BROWSER:-}"
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      TERM: xterm-256color
+      NODE_ENV: production
+      # V8 heap limit prevents unbounded memory growth on constrained VPS hosts.
+      # 768m leaves room for OS overhead on a 1GB VPS; increase to 1536m on 2GB+.
+      NODE_OPTIONS: "--max-old-space-size=768"
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:?Set OPENCLAW_GATEWAY_TOKEN in EasyPanel env}
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENCLAW_DISABLE_BONJOUR: 1
+      OPENCLAW_PREFER_PNPM: 1
+      TZ: ${OPENCLAW_TZ:-UTC}
+      # Model provider keys — fill from EasyPanel env vars
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_BASE_URL: ${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      # Channel tokens (set only what you enable)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+    volumes:
+      - openclaw-data:/home/node/.openclaw
+      - openclaw-workspace:/home/node/.openclaw/workspace
+      - openclaw-config:/home/node/.config/openclaw
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    init: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    command: [ "node", "dist/index.js", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "18789" ]
+    healthcheck:
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  openclaw-data:
+  openclaw-workspace:
+  openclaw-config:

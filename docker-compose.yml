@@ -9,6 +9,9 @@ services:
       HOME: /home/node
       OPENCLAW_HOME: /home/node
       TERM: xterm-256color
+      # V8 heap limit prevents unbounded memory growth on constrained hosts.
+      # Adjust based on available RAM (e.g. 768m for 1GB VPS, 1536m for 2GB).
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=768}
       # Pin container-side state, workspace, and config paths so host values written to
       # `.env` (used by Compose for the bind-mount source below) cannot leak
       # into runtime code that resolves these env vars inside the container.
@@ -48,11 +51,11 @@ services:
       ## scripts/docker/setup.sh with OPENCLAW_SANDBOX=1 for automated setup.
       ## Set DOCKER_GID to the host's docker group GID (run: stat -c '%g' /var/run/docker.sock).
       # - /var/run/docker.sock:/var/run/docker.sock
-    # group_add:
-    #   - "${DOCKER_GID:-999}"
-    # Let bundled local-model providers reach host-side LM Studio/Ollama via
-    # http://host.docker.internal:<port>. Docker Desktop usually provides this
-    # alias; the host-gateway mapping makes it work on Linux Docker Engine too.
+      # group_add:
+      #   - "${DOCKER_GID:-999}"
+      # Let bundled local-model providers reach host-side LM Studio/Ollama via
+      # http://host.docker.internal:<port>. Docker Desktop usually provides this
+      # alias; the host-gateway mapping makes it work on Linux Docker Engine too.
     cap_drop:
       - NET_RAW
       - NET_ADMIN
@@ -66,24 +69,17 @@ services:
       - "${OPENCLAW_MSTEAMS_PORT:-3978}:3978"
     init: true
     restart: unless-stopped
-    command:
-      [
-        "node",
-        "dist/index.js",
-        "gateway",
-        "--bind",
-        "${OPENCLAW_GATEWAY_BIND:-lan}",
-        "--port",
-        "18789",
-      ]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    command: [ "node", "dist/index.js", "gateway", "--bind", "${OPENCLAW_GATEWAY_BIND:-lan}", "--port", "18789" ]
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
+      test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" ]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -124,6 +120,6 @@ services:
     stdin_open: true
     tty: true
     init: true
-    entrypoint: ["node", "dist/index.js"]
+    entrypoint: [ "node", "dist/index.js" ]
     depends_on:
       - openclaw-gateway
